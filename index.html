@@ -22,8 +22,9 @@
                 position: absolute;
                 top: 0;
                 left: 380px;
+                right: 0px;
                 border: none;
-                width: 100%;
+                /*width: 100%;*/
                 height: 100%;
             }
   </style>
@@ -32,7 +33,7 @@
     var map;
     function init(){
       // initiate leaflet map. Change center and zoom for new demos.
-      map = new L.Map('cartodb-map', { 
+      map = new L.Map('map', { 
         center: [-5,175],
         zoom: 3
       })
@@ -42,29 +43,57 @@
       }).addTo(map);
 
       //area of interest from customer. Change this viz.json for new demos
-      var layerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/ad34ed16-350d-11e5-9756-0e853d047bba/viz.json';
+      var layerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/55aa58fa-4cdd-11e5-ab15-0e018d66dc29/viz.json';
+      var torqueLayerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/f9a2db86-4ceb-11e5-a5b4-0e4fddd5de28/viz.json';
+      var lineSubLayer;
+      var originSubLayer;
+      var destSubLayer;
+
+      var torqueLayer;
+      var torqueSubLayer;
 
       cartodb.createLayer(map, layerUrl)
         .addTo(map)
         .on('done', function(layer) {
+          console.log(layer.getSubLayerCount());
+          lineSubLayer = layer.getSubLayer(0);
+          originSubLayer = layer.getSubLayer(1);
+          destSubLayer = layer.getSubLayer(2);
         }).on('error', function() {
           //log the error
         });
 
+      /*torqueLayer = cartodb.createLayer(map, {
+        type: 'torque', // Required
+        order: 1, // Optional
+        options: {
+          query: "SQL statement",   // Required if table_name is not given
+          table_name: "table_name",   // Required if query is not given
+          user_name: "your_user_name", // Required
+          cartocss: "CartoCSS styles" // Required
+        }
+      });*/
+
+      function clearAndAddTorque(torqueLayer) {
+        if (torqueLayer ) {//status is on the map {
+          //clear the torque layer from the map
+        }
+        //add the torque layer to the map with the proper SQL
+      }
+
       $("#button").click(function() {
-        //$("guessthings")
-      });
-      $("#airportsTabSelect").click(function() {
-        $("#airportsTabSelect").toggleClass("is-selected");
-        $("#datesTabSelect").toggleClass("is-selected");
-        $("#datesTab").hide();
-        $("#airportsTab").show();
-      });
-      $("#datesTabSelect").click(function() {
-        $("#airportsTabSelect").toggleClass("is-selected");
-        $("#datesTabSelect").toggleClass("is-selected");
-        $("#datesTab").show();
-        $("#airportsTab").hide();
+        if ($("#airportSelect").val() == "hide" ||
+            $("#yearSelect").val() == "hide" ||
+            $("#monthSelect").val() == "hide") {
+          alert("Pick something!");
+        } else {
+          var airport = $("#airportSelect").val();
+          var year = $("#yearSelect").val();
+          var month = $("#monthSelect").val();
+          lineSubLayer.setSQL("SELECT * FROM qld_airports_lines WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+          originSubLayer.setSQL("SELECT * FROM flight_cube_query_09_06_15_origins WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+          destSubLayer.setSQL("SELECT * FROM flight_cube_query_09_06_15_dests_corrected WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+        }
       });
     }
 
@@ -72,20 +101,24 @@
 </head>
 
 <body onload="init()">
-  <div class='fullSize' id='cartodb-map'></div>
+  <div class='fullSize' id='map'></div>
 
   <div id='toolbar'>
     <div class="toolbar-info fill-blue color-white">
       <h1 class="toolbar-title u-vspace-m">Queensland Airports</h1>
-      <p>Select a date or origin airport to view flight patterns.</p>
+      <p>Select an origin airport and date to view flight patterns.</p>
     </div>
-    <nav class="navigation">
-      <ul class="u-ilist js-navigation">
-        <li><a id="datesTabSelect" href="#" class="is-selected">Dates</a></li>
-        <li><a id="airportsTabSelect" href="#">Airports</a></li>
-      </ul>
-    </nav>
-    <div id="datesTab">
+    <div id="selectionTab">
+      <p>Select an origin airport</p>
+      <div class="select-container">
+        <select id="airportSelect">
+          <option value="hide">Change airport</option>
+          <option value="OOL">OOL</option>
+          <option value="TSV">TSV</option>
+          <option value="ISA">ISA</option>
+          <option value="LRE">LRE</option>
+        </select>
+      </div>
       <p>Select a Year</p>
       <div class="select-container">
         <select id="yearSelect">
@@ -120,36 +153,13 @@
         </select>
       </div>
       <h1>What to compare?</h1>
-      <p><input type="radio" name="foo" value="month" checked>Previous Month, This Year</p>
-      <p><input type="radio" name="foo" value="year">This Month, Previous Year</p>
+      <p><input type="radio" name="compare" value="month" checked>Previous Month, This Year</p>
+      <p><input type="radio" name="compare" value="year">This Month, Previous Year</p>
       <br>
       <p id="button" class="button button--blue">
         <a href="#">Visualize</a>
       </p>
-    </div><!--datesTab-->
-    <div id="airportsTab" style="display: none">
-      <p>Select an Airport</p>
-      <div class="select-container">
-        <select>
-          <option value="hide">Change your airport</option>
-          <option value="01">OOL</option>
-          <option value="02">TSV</option>
-          <option value="03">ISA</option>
-          <option value="04">LRE</option>
-          <option value="05">SYD</option>
-          <option value="06">TEV</option>
-          <option value="07">July</option>
-          <option value="08">August</option>
-          <option value="09">September</option>
-          <option value="10">October</option>
-          <option value="11">November</option>
-          <option value="12">December</option>
-        </select>
-      </div>
-      <p id="button" class="button button--blue">
-        <a href="#">Submit</a>
-      </p>
-    </div><!--airportsTab-->
+    </div><!--selectionTab-->
   </div>
 
 </body>
