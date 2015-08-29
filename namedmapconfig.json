@@ -1,0 +1,44 @@
+{
+  "version": "0.0.1",
+  "name": "qld_airport_torquename",
+  "auth": {
+    "method": "open"
+  },
+  "placeholders": {
+    "color_up": {
+      "type": "css_color",
+      "default": "green"
+    },
+    "color_neutral": {
+      "type": "css_color",
+      "default": "yellow"
+    },
+    "color_down": {
+      "type": "css_color",
+      "default": "red"
+    },
+    "origin_id": {
+      "type": "number",
+      "default": 1753
+    },
+    "year": {
+      "type": "number",
+      "default": 2012
+    },
+    "month": {
+      "type": "sql_literal",
+      "default": "'May'"
+    }
+  },
+  "layergroup": {
+    "layers": [{
+      "type": "torque",
+      "options": {
+        "cartocss_version": "2.1.1",
+        "cartocss": "/* torque_cat visualization */ Map { -torque-frame-count:256; -torque-animation-duration:30; -torque-time-attribute:\"faketime\"; -torque-aggregation-function:\"CDB_Math_Mode(torque_category)\"; -torque-resolution:2; -torque-data-aggregation:linear; } #untitled_table_10{ comp-op: source-over; marker-fill-opacity: 0.9; marker-line-color: #FFF; marker-line-width: 0; marker-line-opacity: 1; marker-type: ellipse; marker-width: 6; marker-fill: #0F3B82; } #untitled_table_10[frame-offset=1] { marker-width:8; marker-fill-opacity:0.45; } #untitled_table_10[frame-offset=2] { marker-width:10; marker-fill-opacity:0.225; } #untitled_table_10[value=1] { marker-fill: #F11810; } #untitled_table_10[value=2] { marker-fill: #1F78B4; }",
+        "sql": "with -- first data, main cities of the world \n data as (select * from athompson.flight_cube_query_09_06_15_dests_corrected where calendaryear = 2010  AND -- change the year \n calendarmonth = 'May' -- change the month \n), -- from OOL and others \n origin as (select * from athompson.flight_cube_query_09_06_15_origins where cartodb_id = <%= origin_id %> -- change the id based on airport \n ), -- get cities closer to 14000 Km \n dests as (select d.*,(ST_Distance(o.the_geom::geography, d.the_geom::geography ))/1000::int distance from data d, origin o), -- generate lines using the geographic maxmimum circle \n lines as(select dests.cartodb_id, dests.calendarmonth, dests.calendaryear, dests.city_pair, dests.flight_type, dests.load, dests.distance, ST_Transform(ST_Segmentize(ST_MakeLine(ST_Transform(origin.the_geom, 953027),ST_Transform(dests.the_geom, 953027)), 100000), 3857 ) the_geom_webmercator from origin,dests), -- steps to interpolate, 300 per route, from 0 to 1 \n steps as (select lines.cartodb_id, generate_series(0, 300, 1 )/300.0 step from lines) -- finally the points over lines \n select -- fake autonum \n row_number() over (partition by 1) cartodb_id, -- fake category (needed by torque) \n lines.city_pair, lines.flight_type, 1 as fakecat, -- calculate the timing of each point starting with this date \n timestamp '2015-08-23 10:00' -- they will all arrive _almost_ at the same time \n -- to the destiny (1 hour would be same time) \n - interval '45 minutes' * (lines.distance/1000.0) -- some random exit distribution using modulus \n + interval '1 hour' * (lines.cartodb_id % 15) -- actual distribution across the line at 1000km/h speed \n + interval '1 hour' * (steps.step*lines.distance/(1000.0)) faketime , -- get a point on the line using the step \n ST_LineInterpolatePoint(lines.the_geom_webmercator, steps.step) the_geom_webmercator from lines join steps on lines.cartodb_id = steps.cartodb_id order by steps.step",
+        "interactivity": ["cartodb_id", "name", "pop_max"]
+      }
+    }]
+  }
+}

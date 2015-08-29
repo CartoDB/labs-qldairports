@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Lesson 1 | CartoDB.js | CartoDB</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
+    <link rel="shortcut icon" href="http://cartodb.com/assets/favicon.ico" />
+    
+    <!-- Map takes up full browser window -->
+    <style>
+      html, body, #map {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+
+    <link rel="stylesheet" href="http://libs.cartocdn.com/cartodb.js/v3/3.14/themes/css/cartodb.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <!-- include cartodb.js library -->
+    <script src="http://libs.cartocdn.com/cartodb.js/v3/3.14/cartodb.js"></script>
+
+    
+    <!-- Drop your code between the script tags below! https://team.cartodb.com/u/athompson/api/v2/viz/f638602e-4aa2-11e5-9d6d-0e4fddd5de28/viz.json -->
+    <script>
+    var map;
+    window.onload = function(){
+      // initiate leaflet map. Change center and zoom for new demos.
+      map = new L.Map('map', { 
+        center: [-5,175],
+        zoom: 3
+      })
+
+      var basemap = L.tileLayer('http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="http://cartodb.com/attributions">CartoDB</a>'
+      }).addTo(map);
+
+       var longquery = "with \
+data as (select * from athompson.flight_cube_query_09_06_15_dests_corrected where calendaryear = 2010  AND calendarmonth = 'April'), \
+origin as (select * from athompson.flight_cube_query_09_06_15_origins where cartodb_id = 1753), \
+dests as (select d.*,(ST_Distance(o.the_geom::geography, d.the_geom::geography))/1000::int distance from data d, origin o), \
+lines as(select dests.cartodb_id, dests.calendarmonth, dests.calendaryear, dests.city_pair, dests.flight_type, dests.load, dests.loadnum, dests.distance, ST_Transform(ST_Segmentize(ST_MakeLine(ST_Transform(origin.the_geom, 953027), ST_Transform(dests.the_geom, 953027)), 100000), 3857 ) the_geom_webmercator from origin,dests), \
+steps as (select lines.cartodb_id, generate_series(0, 300, 1 )/300.0 step from lines) \
+select row_number() over (partition by 1) cartodb_id, lines.city_pair, lines.flight_type, 1 as fakecat, \
+  timestamp '2015-08-23 10:00' \
+    - interval '45 minutes' * (lines.distance/1000.0) \
+    + interval '1 hour' * (lines.cartodb_id % 15) \
+    + interval '1 hour' * (steps.step*lines.distance/(1000.0)) faketime , \
+  ST_LineInterpolatePoint(lines.the_geom_webmercator, steps.step) the_geom_webmercator from lines \
+join steps on lines.cartodb_id = steps.cartodb_id order by steps.step";
+
+      var vizjson = 'https://team.cartodb.com/u/athompson/api/v2/viz/f9a2db86-4ceb-11e5-a5b4-0e4fddd5de28/viz.json';
+      cartodb.createLayer(map, {
+          type: 'torque', // Required
+          order: 1, // Optional
+          options: {
+            query: longquery,   // Required if table_name is not given
+            user_name: "athompson", // Required
+            cartocss: '/** torque_cat visualization */ Map { -torque-frame-count:256; -torque-animation-duration:30; -torque-time-attribute:"faketime"; -torque-aggregation-function:"CDB_Math_Mode(torque_category)"; -torque-resolution:2; -torque-data-aggregation:linear; } #untitled_table_10{ comp-op: source-over; marker-fill-opacity: 0.9; marker-line-color: #FFF; marker-line-width: 0; marker-line-opacity: 1; marker-type: ellipse; marker-width: 6; marker-fill: #0F3B82; } #untitled_table_10[frame-offset=1] { marker-width:8; marker-fill-opacity:0.45; } #untitled_table_10[frame-offset=2] { marker-width:10; marker-fill-opacity:0.225; } #untitled_table_10[value=1] { marker-fill: #F11810; } #untitled_table_10[value=2] { marker-fill: #1F78B4; }' // Required
+          }
+        }, {
+          legend: {"type":"category","show_title":false,"title":"","template":"","visible":true,"items":[{"name":"Domestic","visible":true,"value":"#F11810"},{"name":"International","visible":true,"value":"#1F78B4"}]}
+        }).addTo(map);
+    }
+    </script>
+
+  </body>
+</html>
