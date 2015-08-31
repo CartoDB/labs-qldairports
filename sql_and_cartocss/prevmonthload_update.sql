@@ -45,9 +45,14 @@ BEGIN
   ELSIF thismonth = 'December' THEN
       prevmonth := 'November';
       searchyear := thisyear;
-  ELSE      NULL;
-  END IF;  resultcount := (SELECT count(load_num) FROM athompson.flight_cube_query_09_06_15_dests_corrected_workingcopy WHERE city_pair = this_city_pair AND calendarmonth = prevmonth AND calendaryear = searchyear);
+  ELSE
+      NULL;
+  END IF;
 
+  -- Get count of previous month records; there should only ever be 1 with this query, or 0 if the flight route was not flown that month
+  resultcount := (SELECT count(load_num) FROM athompson.flight_cube_query_09_06_15_dests_corrected_workingcopy WHERE city_pair = this_city_pair AND calendarmonth = prevmonth AND calendaryear = searchyear);
+
+  --handle the 1 case
   IF resultcount = 1 THEN
       prevmonthloadnum := (SELECT load_num FROM athompson.flight_cube_query_09_06_15_dests_corrected_workingcopy WHERE city_pair = this_city_pair AND calendarmonth = prevmonth AND calendaryear = searchyear);
       EXECUTE 'UPDATE athompson.flight_cube_query_09_06_15_dests_corrected_workingcopy SET prevmonthload = '
@@ -58,7 +63,7 @@ BEGIN
         || quote_literal(thismonth)
         || 'AND calendaryear = '
         || quote_literal(thisyear);
-  ELSE
+  ELSE -- handle the zero case by placing 1000, which we can filter and deal with later
     prevmonthloadnum := 1000;
     EXECUTE 'UPDATE athompson.flight_cube_query_09_06_15_dests_corrected_workingcopy SET prevmonthload = '
       || quote_literal(prevmonthloadnum)
