@@ -43,25 +43,44 @@
       }).addTo(map);
 
       //area of interest from customer. Change this viz.json for new demos
-      var layerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/55aa58fa-4cdd-11e5-ab15-0e018d66dc29/viz.json';
+      //old one var layerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/55aa58fa-4cdd-11e5-ab15-0e018d66dc29/viz.json';
+      var layerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/5c45f8ea-5340-11e5-a0ac-0e9d821ea90d/viz.json';
       var torqueLayerUrl = 'https://team.cartodb.com/u/athompson/api/v2/viz/f9a2db86-4ceb-11e5-a5b4-0e4fddd5de28/viz.json';
       var lineSubLayer;
       var originSubLayer;
       var destSubLayer;
 
       var torqueLayer;
+      var torqueSlider;
       var torqueSubLayer;
 
-      cartodb.createLayer(map, layerUrl)
+      cartodb.createLayer(map, layerUrl, {legends: true})
         .addTo(map)
         .on('done', function(layer) {
           console.log(layer.getSubLayerCount());
           lineSubLayer = layer.getSubLayer(0);
           originSubLayer = layer.getSubLayer(1);
           destSubLayer = layer.getSubLayer(2);
-        }).on('error', function() {
+
+          cartodb.createLayer(map, torqueLayerUrl, {legends: false, time_slider: false})
+            .addTo(map)
+            .on('done', function(layer) {
+              layer.hide();
+              torqueLayer = layer;
+              console.log(layer);
+              /*torqueSubLayer = layer.getSubLayer(1);
+              console.log(torqueSubLayer);
+              torqueSubLayer.hide();*/
+            }).on('error', function(err) {
+              //log the error
+              console.log("an error occured: " + err);
+            });
+
+        }).on('error', function(err) {
           //log the error
+          console.log("an error occured: " + err);
         });
+
 
       /*torqueLayer = cartodb.createLayer(map, {
         type: 'torque', // Required
@@ -87,12 +106,173 @@
             $("#monthSelect").val() == "hide") {
           alert("Pick something!");
         } else {
+
           var airport = $("#airportSelect").val();
+
+          var airportID;//need this for the torque layer
+          switch (airport) {//these are each cartodb_id's for an origins table record with this airport's the_geom
+            case "OOL": airportID = 1753; break;
+            case "TSV": airportID = 2331; break;
+            case "ISA": airportID =  169; break;
+            case "LRE": airportID =  428; break;
+          }
+
           var year = $("#yearSelect").val();
           var month = $("#monthSelect").val();
-          lineSubLayer.setSQL("SELECT * FROM qld_airports_lines WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
-          originSubLayer.setSQL("SELECT * FROM flight_cube_query_09_06_15_origins WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
-          destSubLayer.setSQL("SELECT * FROM flight_cube_query_09_06_15_dests_corrected WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+          var comparison = $("input[name='compare']:checked").val()
+
+          //origin and destination are simple
+          originSubLayer.setSQL("SELECT * FROM qld_flights_origins_forsolutions WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+          destSubLayer.setSQL("SELECT * FROM qld_flights_destinations_forsolutions WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+
+          //lines are a bit more involved to style the category
+          lineSubLayer.setSQL("SELECT * FROM qld_flights_lines_forsolutions WHERE origin_city = '" + airport + "' AND calendaryear = " + year + " AND calendarmonth = '" + month + "'");
+          lineSubLayer.setCartoCSS('/** category visualization */ ' +
+                                    '#qld_flights_lines_forsolutions { ' +
+                                       'line-width: 3; ' +
+                                       'line-opacity: 0.7; ' +
+                                    '} ' +
+                                    '#qld_flights_lines_forsolutions[' + comparison + '="decrease"] { ' +
+                                       'line-color: #B40903; ' +
+                                    '} ' +
+                                    '#qld_flights_lines_forsolutions[' + comparison + '="increase"] { ' +
+                                       'line-color: #229A00; ' +
+                                    '} ' +
+                                    '#qld_flights_lines_forsolutions[' + comparison + '="neutral"] { ' +
+                                       'line-color: #FFCC00; ' +
+                                    '} ' +
+                                    '#qld_flights_lines_forsolutions[' + comparison + '="not flown"] { ' +
+                                       'line-color: #5CA2D1; ' +
+                                    '}');
+
+          //start torqueLayer.setSQL (end on line 230)
+          torqueLayer.setSQL("select *, (CASE WHEN \"" + comparison + "\" = 'decrease' THEN 1 " +
+                                             "WHEN \"" + comparison + "\" = 'increase' THEN 2 " + 
+                                             "WHEN \"" + comparison + "\" = 'neutral' THEN 3 " +
+                                             "WHEN \"" + comparison + "\" = 'not flown' THEN 4 " +
+                                             "ELSE 5 END) as torque_category " +
+                              "FROM (with -- first data, main cities of the world \n" +
+                                    "data as ( \n" +
+                                              "select * from athompson.qld_flights_destinations_forsolutions \n" +
+                                                "where \n" +
+                                                  "origin_city = '" + airport + "' AND -- change the airport \n" +
+                                                  "calendaryear = " + year + " AND -- change the year \n" +
+                                                  "calendarmonth = '" + month + "' -- change the month \n" +
+                                            "), -- destinations from this place \n" +
+                                    "origin as ( \n" +
+                                                "select * from athompson.qld_flights_origins_forsolutions where cartodb_id = " + airportID + " -- change the id based on airport \n" +
+                                              "), -- get cities closer to 14000 Km \n" +
+                                    "dests as ( \n" +
+                                                "select d.*, \n" +
+                                                "(ST_Distance( \n" +
+                                                  "o.the_geom::geography, \n" +
+                                                  "d.the_geom::geography \n" +
+                                                "))/1000::int distance \n" +
+                                              "from data d, origin o \n" +
+                                              "), -- generate lines using the geographic maxmimum circle \n" +
+                                    "lines as ( \n" +
+                                                "select \n" +
+                                                  "dests.cartodb_id, \n" +
+                                                  "dests.calendarmonth, \n" + 
+                                                  "dests.calendaryear, \n" + 
+                                                  "dests.city_pair, \n" +
+                                                  "dests.flight_type, \n" + 
+                                                  "dests.load, \n" +
+                                                  "dests.prevmonth_load_num, \n" +
+                                                  "dests.prevmonth_category, \n" +
+                                                  "dests.prevyear_load_num, \n" +
+                                                  "dests.prevyear_category, \n" +
+                                                  "dests.difference_prevmonth_load, \n" +
+                                                  "dests.difference_prevyear_load, \n" +
+                                                  "dests.distance, \n" +
+                                                    "ST_Transform( \n" +
+                                                      "ST_Segmentize( \n" +
+                                                        "ST_MakeLine( \n" +
+                                                          "ST_Transform(origin.the_geom, 953027), \n" +
+                                                          "ST_Transform(dests.the_geom, 953027) \n" +
+                                                        "), \n" +
+                                                        "100000 \n" +
+                                                      "), \n" +
+                                                    "3857 \n" +
+                                                    ") the_geom_webmercator \n" +
+                                              "from origin, dests \n" +
+                                              "), -- steps to interpolate, 300 per route, from 0 to 1 \n" +
+                                    "steps as ( \n" +
+                                                "select lines.cartodb_id, \n" +
+                                                "generate_series(0, 300, 1 )/300.0 step \n" +
+                                                "from lines \n" +
+                                              ") -- finally the points over lines \n" +
+                                    "select \n" +
+                                      "-- fake autonum \n" +
+                                      "row_number() over (partition by 1) cartodb_id, \n" +
+                                      "lines.city_pair, \n" +
+                                      "lines.flight_type, \n" +
+                                      "lines.load, \n" +
+                                      "lines.prevmonth_load_num, \n" +
+                                      "lines.prevmonth_category, \n" +
+                                      "lines.prevyear_load_num, \n" +
+                                      "lines.prevyear_category, \n" +
+                                      "lines.difference_prevmonth_load, \n" +
+                                      "lines.difference_prevyear_load, \n" +
+                                      "-- calculate the timing of each point starting with this date \n" +
+                                      "timestamp '2015-08-23 10:00' \n" +
+                                        "-- they will all arrive _almost_ at the same time \n" +
+                                        "-- to the destiny (1 hour would be same time) \n" +
+                                        "- interval '45 minutes' * (lines.distance/1000.0) \n" +
+                                        "-- some random exit distribution using modulus \n" +
+                                        "+ interval '1 hour' * (lines.cartodb_id % 15) \n" +
+                                        "-- actual distribution across the line at 1000km/h speed \n" +
+                                        "+ interval '1 hour' * (steps.step*lines.distance/(1000.0)) faketime , \n" +
+                                        "-- get a point on the line using the step \n" +
+                                      "ST_LineInterpolatePoint( \n" +
+                                        "lines.the_geom_webmercator, \n" +
+                                        "steps.step \n" +
+                                      ") the_geom_webmercator \n" +
+                                    "from lines \n" +
+                                    "join steps on lines.cartodb_id = steps.cartodb_id \n" +
+                                    "order by steps.step) _cdb_wrap");//end of torqueLayer.setSQL (start on line 145)
+          
+          torqueLayer.setCartoCSS('/** torque_cat visualization */ \n' +
+                                  'Map { \n' +
+                                    '-torque-frame-count:256; \n' +
+                                    '-torque-animation-duration:20; \n' +
+                                    '-torque-time-attribute:"faketime"; \n' +
+                                    '-torque-aggregation-function:"CDB_Math_Mode(torque_category)"; \n' +
+                                    '-torque-resolution:2; \n' +
+                                    '-torque-data-aggregation:linear; \n' +
+                                  '} \n' +
+                                  '#empty_table{ \n' +
+                                    'comp-op: source-over; \n' +
+                                    'marker-fill-opacity: 0.9; \n' +
+                                    'marker-line-color: #FFF; \n' +
+                                    'marker-line-width: 0; \n' +
+                                    'marker-line-opacity: 1; \n' +
+                                    'marker-type: ellipse; \n' +
+                                    'marker-width: 6; \n' +
+                                    'marker-fill: #0F3B82; \n' +
+                                  '} \n' +
+                                  '#empty_table[frame-offset=1] { \n' +
+                                   'marker-width:8; \n' +
+                                   'marker-fill-opacity:0.45; \n' +
+                                  '} \n' +
+                                  '#empty_table[frame-offset=2] { \n' +
+                                   'marker-width:10; \n' +
+                                   'marker-fill-opacity:0.225; \n' +
+                                  '} \n' +
+                                  '#empty_table[value=1] { \n' +
+                                    'marker-fill: #B40903; \n' +
+                                  '} \n' +
+                                  '#empty_table[value=2] { \n' +
+                                    'marker-fill: #229A00; \n' +
+                                  '} \n' +
+                                  '#empty_table[value=3] { \n' +
+                                    'marker-fill: #FFCC00; \n' +
+                                  '} \n' +
+                                  '#empty_table[value=4] { \n' +
+                                    'marker-fill: #5CA2D1; \n' +
+                                  '}');
+          /*torqueLayer.setSQL("select *, (CASE WHEN \"" + comparison + "\" = 'decrease' THEN 1 WHEN \"" + comparison + "\" = 'increase' THEN 2 WHEN \"" + comparison + "\" = 'neutral' THEN 3 WHEN \"" + comparison + "\" = 'not flown' THEN 4 ELSE 5 END) as torque_category FROM (with data as ( select * from athompson.qld_flights_destinations_forsolutions where calendaryear = " + year + " AND calendarmonth = '" + month + "' AND origin_city = '" + airport + "' ), origin as ( select * from athompson.qld_flights_origins_forsolutions where cartodb_id = " + airportID + " ), dests as ( select d.*, (ST_Distance( o.the_geom::geography, d.the_geom::geography ))/1000::int distance from data d, origin o ), lines as( select dests.cartodb_id, dests.calendarmonth, dests.calendaryear, dests.city_pair, dests.flight_type, dests.load, dests.prevmonth_load_num, dests.prevmonth_category, dests.prevyear_load_num, dests.prevyear_category, dests.difference_prevmonth_load, dests.difference_prevyear_load, dests.distance, ST_Transform( ST_Segmentize( ST_MakeLine( ST_Transform(origin.the_geom, 953027), ST_Transform(dests.the_geom, 953027) ), 100000 ), 3857 ) the_geom_webmercator from origin,dests ), steps as ( select lines.cartodb_id, generate_series(0, 300, 1 )/300.0 step from lines ) select row_number() over (partition by 1) cartodb_id, lines.city_pair, lines.flight_type, lines.load, lines.prevmonth_load_num, lines.prevmonth_category, lines.prevyear_load_num, lines.prevyear_category, lines.difference_prevmonth_load, lines.difference_prevyear_load, timestamp '2015-08-23 10:00'  - interval '45 minutes' * (lines.distance/1000.0)  + interval '1 hour' * (lines.cartodb_id % 15)  + interval '1 hour' * (steps.step*lines.distance/(1000.0)) faketime , ST_LineInterpolatePoint( lines.the_geom_webmercator, steps.step ) the_geom_webmercator from lines join steps on lines.cartodb_id = steps.cartodb_id order by steps.step) _cdb_wrap");*/
+          torqueLayer.show();
         }
       });
     }
@@ -152,9 +332,9 @@
           <option value="December">December</option>
         </select>
       </div>
-      <h1>What to compare? (note, currently this is inactive)</h1>
-      <p><input type="radio" name="compare" value="month" checked>Previous Month, This Year</p>
-      <p><input type="radio" name="compare" value="year">This Month, Previous Year</p>
+      <h1>Which route load to compare?</h1>
+      <p><input type="radio" name="compare" value="prevmonth_category" checked>Load from previous month, selected year</p>
+      <p><input type="radio" name="compare" value="prevyear_category">Load from selected month, previous year</p>
       <br>
       <p id="button" class="button button--blue">
         <a href="#">Visualize</a>
