@@ -7,7 +7,7 @@ http://ws.geonames.org/searchJSON?name_equals=MAN&fcode=AIRP&formatted=tr&lang=i
 update table set the_geom = null
 """
 
-API_KEY = '***REMOVED***'
+API_KEY = 'REMOVE'
 cartodb_domain = 'athompson'
 cl = CartoDBAPIKey(API_KEY, cartodb_domain)
 iata_codes_dest = []
