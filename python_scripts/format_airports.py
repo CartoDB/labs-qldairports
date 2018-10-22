@@ -5,7 +5,7 @@ UPDATE athompson.flight_cube_query_09_06_15 SET origin_city = 'ISA' where city_p
 select * from athompson.flight_cube_query_09_06_15 where origin_city is null order by city_pair asc
 '''
 
-API_KEY = '***REMOVED***'
+API_KEY = 'REMOVE'
 cartodb_domain = 'athompson'
 cl = CartoDBAPIKey(API_KEY, cartodb_domain)
 iata_codes_origin = []
